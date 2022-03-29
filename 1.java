@@ -1,43 +1,26 @@
 public class VindexCommand extends CommandBase {
+    @Override
+    public int getRequiredPermissionLevel() {
+        return 0;
+    }
 
-    private final String[][] commands = new String[][]{
-            {
-                    "/vi cost list",
-                    "/vi costs",
-                    "/vi worth",
-                    "/vi top",
-                    "/vi help [command]"
-            },
-            {
-                    "/vi cost <add/remove/list>",
-                    "/vi costs",
-                    "/vi worth",
-                    "/vi top",
-                    "/vi help [command]"
-            },
-            {
-                    "/vi cost <add/remove/list>",
-                    "/vi costs",
-                    "/vi reward <add/set/remove/list>",
-                    "/vi rewards",
-                    "/vi worth",
-                    "/vi top",
-                    "/vi help [command]"
-            },
-            {
-                    "/vi config <load/save>",
-                    "/vi cost <add/remove/list>",
-                    "/vi costs",
-                    "/vi reward <add/set/remove/list>",
-                    "/vi rewards",
-                    "/vi worth",
-                    "/vi top",
-                    "/vi stop",
-                    "/vi help [command]"
-            }
-    };
+    @Override
+    public boolean checkPermission(MinecraftServer server, ICommandSender sender) {
+        return true;
+    }
+
+    private static HashMap<String,List<String>> tab_commands =
+            Maps.newHashMap(
+                    ImmutableMap.of(
+                    "cost", Arrays.asList("list","add","remove"),
+                    "reward",Arrays.asList("list","add","set","remove"),
+                    "costs", Collections.emptyList(),
+                    "rewards", Collections.emptyList(),
+                    "worth", Collections.emptyList()));
+
+
     private static final String MAIN_PERM = "vindex.command";
-    private String node = "";
+    private HashMap<String,ParametrBuilder> commandsParam = new HashMap<>();
 
     @Override
     public String getName() {
@@ -50,81 +33,400 @@ public class VindexCommand extends CommandBase {
     }
 
     @Override
+    public List<String> getTabCompletions(MinecraftServer server, ICommandSender sender, String[] args, @Nullable BlockPos targetPos) {
+        tab_commands.putAll(Maps.newHashMap(ImmutableMap.of(
+                        "top", Collections.emptyList(),
+                        "help", Collections.emptyList(),
+                        "config",Arrays.asList("load","save"),
+                        "stop", Collections.emptyList())));
+
+        boolean isSpaceOld = false;
+        List<String> results = new ArrayList<>();
+        if(args[args.length-1].equals(""))
+        {
+            isSpaceOld = true;
+        }
+        List<String> existingArgs = new ArrayList<>();
+        for(String arg : args)
+        {
+            if(!arg.equals(""))
+            {
+                existingArgs.add(arg);
+            }
+        }
+
+        if(existingArgs.isEmpty())
+        {
+            switch (permissionLevel(sender)) {
+                case 0:
+                case 1:
+                {
+                    results.addAll(Arrays.asList("cost","costs","worth","help","top"));
+                }
+                case 2:
+                {
+                    results.addAll(Arrays.asList("cost","costs","reward","rewards","worth","help","top"));
+                }
+                case 3:
+                {
+                    results.addAll(Arrays.asList("cost","costs","reward","rewards","worth","help","top","stop","config"));
+                }
+            }
+        }
+        else
+        {
+            if(isSpaceOld) {
+                if (existingArgs.size() == 1) {
+                    if(!tab_commands.containsKey(args[0]))
+                    {
+                        return results;
+                    }
+
+
+                    switch (args[0].toLowerCase())
+                    {
+                        case "cost":
+                        {
+                            if(permissionLevel(sender)<1)
+                            {
+                                results.add("list");
+                            }
+                            else
+                            {
+                                results.addAll(tab_commands.get(args[0]));
+                            }
+                            break;
+                        }
+                        case "reward":
+                        {
+                            if(permissionLevel(sender)<2)
+                            {
+                                results.add("list");
+                            }
+                            else
+                            {
+                                results.addAll(tab_commands.get(args[0]));
+                            }
+                            break;
+                        }
+                        case "config":
+                        {
+                            if(permissionLevel(sender)>=3)
+                            {
+                                results.addAll(tab_commands.get(args[0]));
+                            }
+                            break;
+                        }
+                    }
+
+                }
+            }
+            else
+            {
+                //Error - Player can see OP commands
+                if (existingArgs.size() == 1) {
+                    for(String comm : tab_commands.keySet())
+                    {
+                        if(comm.startsWith(args[0].toLowerCase()))
+                        {
+                            results.add(comm);
+                        }
+                    }
+                }
+                if (existingArgs.size() == 2) {
+                    if(!tab_commands.containsKey(args[0]))
+                    {
+                        return results;
+                    }
+                    for(String comm : tab_commands.get(args[0]))
+                    {
+                        if(comm.startsWith(args[1].toLowerCase()))
+                        {
+                            results.add(comm);
+                        }
+                    }
+                }
+            }
+        }
+
+        return results;
+
+    }
+
+    private void createParametrs()
+    {
+        ParametrBuilder top_param;
+        ParametrBuilder config_param;
+        ParametrBuilder cost_param;
+        ParametrBuilder costs_param;
+        ParametrBuilder reward_param;
+        ParametrBuilder rewards_param;
+        ParametrBuilder stop_param;
+        ParametrBuilder worth_param;
+
+
+        top_param = ParametrBuilder.create("top")
+                .setCountArgs(1)
+                .setPerm(MAIN_PERM+".top")
+                .setNoArgs();
+        config_param = ParametrBuilder.create("config")
+                .setPerm(MAIN_PERM+".config")
+                .setCountArgs(2)
+                .AddStringParametr("value")
+                    .setPotentialValues(new String[] {"save","load"})
+                .end();
+        cost_param = ParametrBuilder.create("cost")
+                .setCountArgs(2)
+                .setMaxCountArgs(5)
+                .setPerm(MAIN_PERM+".cost")
+                .child("add")
+                    .setOnlyPlayer()
+                    .setPerm(MAIN_PERM+".cost.add")
+                    .setCountArgs(2)
+                    .setMaxCountArgs(5)
+                    .AddIntegerParametr("cost")
+                        .setMinValue(0)
+                    .end()
+                    .AddBoolParametr("is_this")
+                        .setUseLogicConst(false)
+                        .setTrueAliases(new String[]{"-t"})
+                        .setOptional(true)
+                        .setPerm(MAIN_PERM + ".cost.add.this")
+                    .end()
+                    .AddStringParametr("item")
+                        .setOptional(true)
+                    .end()
+                    .AddIntegerParametr("meta")
+                        .setMinValue(0)
+                        .setOptional(true)
+                        .setDependent(true)
+                    .end()
+                .parent()
+                .child("remove")
+                    .setPerm(MAIN_PERM+".cost.remove")
+                    .setOnlyPlayer()
+                    .setCountArgs(1)
+                    .setMaxCountArgs(4)
+                    .AddBoolParametr("is_this")
+                        .setUseLogicConst(false)
+                        .setTrueAliases(new String[]{"-t"})
+                        .setOptional(true)
+                        .setPerm(MAIN_PERM + ".cost.add.this")
+                    .end()
+                    .AddStringParametr("item")
+                        .setOptional(true)
+                    .end()
+                    .AddIntegerParametr("meta")
+                        .setMinValue(0)
+                        .setOptional(true)
+                        .setDependent(true)
+                    .end()
+                .parent()
+                .child("list")
+                    .setPerm(MAIN_PERM+".cost.list")
+                    .setCountArgs(1)
+                    .setMaxCountArgs(2)
+                    .AddBoolParametr("is_future")
+                        .setPerm(MAIN_PERM+".cost.list.future")
+                        .setOptional(true)
+                        .setUseLogicConst(false)
+                        .setTrueAliases(new String[]{"-f"})
+                    .end()
+                .parent();
+
+        costs_param = ParametrBuilder.create("costs")
+                .setCountArgs(1)
+                .setPerm(MAIN_PERM+".cost.list")
+                .setNoArgs();
+        worth_param = ParametrBuilder.create("worth")
+                .setPerm(MAIN_PERM+".worth")
+                .setCountArgs(1)
+                .setOnlyPlayer()
+                .setNoArgs();
+        reward_param = ParametrBuilder.create("reward")
+                .setPerm(MAIN_PERM+".reward")
+                .setCountArgs(2)
+                .setMaxCountArgs(5)
+                .child("add")
+                    .setOnlyPlayer()
+                    .setPerm(MAIN_PERM+".reward.add")
+                    .setCountArgs(3)
+                    .setMaxCountArgs(4)
+                    .AddDoubleParametr("k")
+                        .setMinValue(0.0)
+                        .setMaxValue(1.0)
+                    .end()
+                    .AddIntegerParametr("money")
+                        .setMinValue(0)
+                    .end()
+                    .AddBoolParametr("is_this")
+                        .setUseLogicConst(false)
+                        .setTrueAliases(new String[]{"-f"})
+                        .setPerm(MAIN_PERM+".reward.add.this")
+                        .setOptional(true)
+                    .end()
+                .parent()
+                .child("remove")
+                    .setPerm(MAIN_PERM+".reward.remove")
+                    .setOnlyPlayer()
+                    .setCountArgs(2)
+                    .setMaxCountArgs(3)
+                    .AddDoubleParametr("k")
+                        .setMinValue(0.0)
+                        .setMaxValue(1.0)
+                    .end()
+                    .AddBoolParametr("is_this")
+                        .setPerm(MAIN_PERM+".reward.remove.this")
+                        .setUseLogicConst(false)
+                        .setTrueAliases(new String[]{"-t"})
+                        .setOptional(true)
+                    .end()
+                .parent()
+                .child("set")
+                    .setOnlyPlayer()
+                    .setCountArgs(2)
+                    .setMaxCountArgs(3)
+                    .setPerm(MAIN_PERM+".reward.set")
+                    .AddDoubleParametr("k")
+                        .setMinValue(0.0)
+                        .setMaxValue(1.0)
+                    .end()
+                    .AddBoolParametr("is_this")
+                        .setPerm(MAIN_PERM+".reward.set.this")
+                        .setUseLogicConst(false)
+                        .setTrueAliases(new String[]{"-t"})
+                        .setOptional(true)
+                    .end()
+                .parent()
+                .child("list")
+                    .setPerm(MAIN_PERM+".reward.list")
+                    .setCountArgs(1)
+                    .setMaxCountArgs(2)
+                    .AddBoolParametr("is_future")
+                        .setOptional(true)
+                        .setPerm(MAIN_PERM+".reward.list.future")
+                        .setTrueAliases(new String[]{"-f"})
+                        .setUseLogicConst(false)
+                    .end()
+                .parent();
+        rewards_param = ParametrBuilder.create("rewards")
+                .setPerm(MAIN_PERM+".reward.list")
+                .setCountArgs(1)
+                .setNoArgs();
+        stop_param = ParametrBuilder.create("stop")
+                .setCountArgs(1)
+                .setPerm(MAIN_PERM+".stop")
+                .setNoArgs();
+
+        commandsParam = new HashMap<>();
+
+        commandsParam.put("top",top_param);
+        commandsParam.put("config",config_param);
+        commandsParam.put("cost",cost_param);
+        commandsParam.put("costs",costs_param);
+        commandsParam.put("reward",reward_param);
+        commandsParam.put("rewards",rewards_param);
+        commandsParam.put("stop",stop_param);
+        commandsParam.put("worth",worth_param);
+    }
+
+    @Override
     public void execute(MinecraftServer server, ICommandSender sender, String[] args) throws CommandException {
-        if (!checkPermission(sender, MAIN_PERM)) return;
+        if (!CheckPermissions.checkPermission(sender, MAIN_PERM)) return;
         if (args.length == 0) {
-            sender.sendMessage(CommandsOutput.Common.commandsList(commands[permissionLevel(sender)]));
+            sender.sendMessage(CommandsOutput.Common.commandsList(getAllowedCommands(sender)));
             return;
         }
+        HashMap<String,Object> res = new HashMap<>();
+        createParametrs();
         switch (args[0]) {
             case ("config"):
-                if (args.length != 2) {
-                    sender.sendMessage(CommandsOutput.Config.configArgs(permissionLevel(sender)>=2));
-                    break;
-                }
-
-                configCommand(sender, Arrays.copyOfRange(args,1, args.length));
+                res = commandsParam.get("config").execute(sender,args);
+                if((boolean)res.get("status"))
+                    configCommand(sender,res);
                 break;
             case ("cost"): {
-
-                if (args.length < 2) {
-                    sender.sendMessage(CommandsOutput.Cost.costArgs(permissionLevel(sender)>=1));
-                    break;
-                }
-                costCommand(sender,Arrays.copyOfRange(args,1,args.length));
+                 res = commandsParam.get("cost").execute(sender,args);
+                 if((boolean)res.get("status"))
+                     costCommand(sender,res);
                 break;
             }
             case ("costs"): {
-                costCommand(sender,new String[]{"list"});
+                res = commandsParam.get("costs").execute(sender,args);
+                if((boolean)res.get("status")) {
+                    res.put("cost.next", "list");
+                    costCommand(sender, res);
+                }
                 break;
             }
             case ("reward"):
             {
-                if (args.length < 2) {
-                    sender.sendMessage(CommandsOutput.Reward.rewardArgs(permissionLevel(sender)>=2));
-                    break;
-                }
-                rewardCommand(sender,Arrays.copyOfRange(args,1,args.length));
+                res = commandsParam.get("reward").execute(sender,args);
+                if((boolean)res.get("status"))
+                    rewardCommand(sender,res);
                 break;
             }
             case ("rewards"): {
-                rewardCommand(sender,new String[]{"list"});
+                res = commandsParam.get("rewards").execute(sender,args);
+                if((boolean)res.get("status")) {
+                    res.put("reward.next", "list");
+                    rewardCommand(sender, res);
+                }
                 break;
             }
             case ("worth"): {
-                worthCommand(sender);
+                res = commandsParam.get("worth").execute(sender,args);
+                if((boolean)res.get("status"))
+                    worthCommand(sender);
                 break;
             }
             case ("help"):
             {
-                node = MAIN_PERM+".help";
-                if (!checkPermission(sender, node)) return;
+                String node = MAIN_PERM + ".help";
+                if (!CheckPermissions.checkPermission(sender, node)) return;
                 helpCommand(sender,Arrays.copyOfRange(args,1,args.length));
                 break;
             }
             case ("top"):
             {
-                topCommand(sender,Arrays.copyOfRange(args,1,args.length));
+                res = commandsParam.get("top").execute(sender,args);
+                if(!((boolean)res.get("status"))) break;
+                topCommand(sender,res);
                 break;
             }
             case ("stop"): {
-                if(permissionLevel(sender)<3)
-                {
-                    sender.sendMessage(CommandsOutput.Common.accessDenied());
-                    break;
+                res = commandsParam.get("stop").execute(sender,args);
+                if((boolean)res.get("status")) {
+                    sender.sendMessage(CommandsOutput.Season.forceStopSeason());
+                    Vindex.config.previousAward = Instant.MIN;
                 }
-                sender.sendMessage(CommandsOutput.Season.forceStopSeason());
-                Vindex.config.previousAward = Instant.MIN;
                 break;
             }
             default:
                 sender.sendMessage(CommandsOutput.Common.argsError());
-                sender.sendMessage(CommandsOutput.Common.commandsList(commands[permissionLevel(sender)]));
+                sender.sendMessage(CommandsOutput.Common.commandsList(getAllowedCommands(sender)));
                 break;
         }
     }
 
-    protected void topCommand(ICommandSender sender,String[] args)
+    private String[] getAllowedCommands(ICommandSender sender)
+    {
+        List<String> res = new ArrayList<>();
+        createParametrs();
+        for(Map.Entry<String,ParametrBuilder> entry : commandsParam.entrySet())
+        {
+            res.add(entry.getValue().getCommandList(sender));
+        }
+        res.add("help [command]");
+        res.sort(Collator.getInstance());
+        for(int i = 0;i<res.size();i++)
+        {
+            res.set(i,"/vi "+res.get(i));
+        }
+        return res.toArray(new String[]{});
+    }
+
+    protected void topCommand(ICommandSender sender,HashMap<String,Object> args)
     {
         String name = "";
         int pos = -1;
@@ -168,21 +470,16 @@ public class VindexCommand extends CommandBase {
         sender.sendMessage(CommandsOutput.Common.topPlayers(result,name,pos,score));
     }
 
-    protected void configCommand(ICommandSender sender, String[] args)
+    protected void configCommand(ICommandSender sender, HashMap<String,Object> args)
     {
-        node = MAIN_PERM+".config";
-        if (!checkPermission(sender, node)) return;
-        node += ".";
-        switch (args[0]) {
+
+        String arg_1 = (String) args.get("value");
+        switch (arg_1) {
             case ("load"):
-                node += "load";
-                if (!checkPermission(sender, node)) return;
                 Vindex.config.load();
                 sender.sendMessage(CommandsOutput.Config.configsReloaded());
                 break;
             case ("save"):
-                node += "save";
-                if (!checkPermission(sender, node)) return;
                 Vindex.config.save();
                 sender.sendMessage(CommandsOutput.Config.configsSaved());
                 break;
@@ -195,96 +492,73 @@ public class VindexCommand extends CommandBase {
 
     }
 
-    protected void costCommand(ICommandSender sender, String[] args)
+    protected void costCommand(ICommandSender sender, HashMap<String,Object> args)
     {
-        node = MAIN_PERM+".cost";
-        if (!checkPermission(sender, node)) return;
-        node+=".";
-
         ItemStack stack;
-        String name = "";
-        boolean this_cost = false;
-        switch (args[0]) {
+        String name = args.containsKey("item") ? (String) args.get("item") : "";
+        int damage = args.containsKey("meta") ? (int) args.get("meta") : 0;
+        boolean this_cost = args.containsKey("is_this");
+        switch ((String) args.get("cost.next")) {
             case ("add"):
-                node+="add";
-                if (!checkPermission(sender, node)) return;
-                if(!checkPlayer(sender)) return;
                 stack = getHeldItem(sender);
-                if (args.length < 2) {
-                    sender.sendMessage(CommandsOutput.Cost.costArgs(permissionLevel(sender)>=1));
-                    break;
-                }
-                if (stack.isEmpty() && args.length < 3) {
+                if (stack.isEmpty() && name.equals("")) {
                     sender.sendMessage(CommandsOutput.Cost.needItemInHand());
                     return;
                 }
-                name = args.length > 2 ? args[2] : "";
                 if(!name.equals(""))
                 {
-                    ItemStack temp = GameRegistry.makeItemStack(name,0,1,"");
+                    ItemStack temp = GameRegistry.makeItemStack(name,damage,1,"");
                     if(!temp.isEmpty())
                     {
                         stack=temp;
                     }
+                    else
+                    {
+                        sender.sendMessage(CommandsOutput.Common.argsError("command.vindex.vi.err_arg",name));
+                        sender.sendMessage(CommandsOutput.Common.argsError("command.vindex.vi.cost.invalid_item"));
+                        break;
+                    }
                 }
                 stack.setCount(1);
-                if(args[args.length-1].equals("-t"))
-                {
-                    this_cost = true;
-                }
                 if (Vindex.costs.Find(stack.serializeNBT(),this_cost)!=null) {
                     sender.sendMessage(CommandsOutput.Cost.alreadyInList());
                     break;
                 }
-                sender.sendMessage(CommandsOutput.Cost.addedInList());
-                Vindex.costs.Add(stack.serializeNBT(), Integer.parseInt(args[1]),this_cost);
+                sender.sendMessage(CommandsOutput.Cost.addedInList(this_cost));
+                Vindex.costs.Add(stack.serializeNBT(), (Integer) args.get("cost"),this_cost);
                 Vindex.costs.save();
                 break;
             case ("remove"):
-                node+="remove";
-                if (!checkPermission(sender, node)) return;
-                if(!checkPlayer(sender)) return;
                 stack = getHeldItem(sender);
-                if (args.length >2) {
-                    sender.sendMessage(CommandsOutput.Cost.costArgs(permissionLevel(sender)>=1));
-                    break;
-                }
-                if (stack.isEmpty() && args.length < 2) {
+                if (stack.isEmpty() && name.equals("")) {
                     sender.sendMessage(CommandsOutput.Cost.needItemInHand());
                     return;
                 }
-                name = args.length > 1 ? args[1] : "";
                 if(!name.equals(""))
                 {
-                    ItemStack temp = GameRegistry.makeItemStack(name,0,1,"");
+                    ItemStack temp = GameRegistry.makeItemStack(name,damage,1,"");
                     if(!temp.isEmpty())
                     {
                         stack=temp;
                     }
+                    else
+                    {
+                        sender.sendMessage(CommandsOutput.Common.argsError("command.vindex.vi.err_arg",name));
+                        sender.sendMessage(CommandsOutput.Common.argsError("command.vindex.vi.cost.invalid_item"));
+                        break;
+                    }
                 }
-                if(args[args.length-1].equals("-t"))
-                {
-                    this_cost = true;
-                }
+                stack.setCount(1);
                 if (Vindex.costs.Find(stack.serializeNBT(),this_cost)==null) {
                     sender.sendMessage(CommandsOutput.Cost.noopInList());
                     break;
                 }
-                sender.sendMessage(CommandsOutput.Cost.deletedFromList());
+                sender.sendMessage(CommandsOutput.Cost.deletedFromList(this_cost));
                 Vindex.costs.Remove(stack.serializeNBT(),this_cost);
                 Vindex.costs.save();
                 break;
             case ("list"):
-                node+="list";
-                if (!checkPermission(sender, node)) return;
-                if(!args[args.length-1].equals("-f"))
-                {
-                    this_cost = true;
-                }
-                else
-                {
-                    if(!checkPermission(sender,node+".future")) return;
-                }
+                this_cost = !args.containsKey("is_future");
                 Comparator<Map.Entry<ItemStack, Double>> comparator = Map.Entry.comparingByValue();
                 HashMap<ItemStack,Double> costs_name = new HashMap<>();
                 for(Cost temp : Vindex.costs.getCosts(this_cost))
@@ -299,61 +573,16 @@ public class VindexCommand extends CommandBase {
         }
     }
 
-    protected void rewardCommand(ICommandSender sender, String[] args)
+    protected void rewardCommand(ICommandSender sender, HashMap<String,Object> args)
     {
-        node = MAIN_PERM+".reward";
-        if(!checkPermission(sender,node))
-        {
-            return;
-        }
-        double k= 0;
-        node +=".";
-        boolean this_reward = false;
-        switch (args[0])
+
+        double k = args.containsKey("k") ? (double) args.get("k") :-1;
+        boolean this_reward = args.containsKey("is_this");
+        switch ((String) args.get("reward.next"))
         {
             case "add":
             {
-                node+="add";
-                if (!checkPermission(sender, node)) return;
-                if(!checkPlayer(sender)) return;
-                if(args.length!=3)
-                {
-                    sender.sendMessage(CommandsOutput.Reward.rewardArgs(permissionLevel(sender)>=2));
-                    break;
-                }
-                try{
-                    k = Double.parseDouble(args[1]);
-                }
-                catch (NumberFormatException err)
-                {
-                    sender.sendMessage(CommandsOutput.Reward.errorQuantile(args[1]));
-                    break;
-                }
-                int money = 0;
-                try{
-                    money = Integer.parseInt(args[2]);
-                }
-                catch (NumberFormatException err)
-                {
-                    sender.sendMessage(CommandsOutput.Reward.errorMoney(args[2]));
-                    break;
-                }
-                if(k<=0 || k>1)
-                {
-                    sender.sendMessage(CommandsOutput.Reward.errorQuantile(args[1]));
-                    sender.sendMessage(CommandsOutput.Reward.errorQuantile());
-                    break;
-                }
-                if(money<0)
-                {
-                    sender.sendMessage(CommandsOutput.Reward.errorMoney(args[2]));
-                    sender.sendMessage(CommandsOutput.Reward.errorMoney());
-                    break;
-                }
-                if(args[args.length-1].equals("-t"))
-                {
-                    this_reward = true;
-                }
+                int money = (Integer) args.get("money");
                 if(Vindex.rewards.Find(k,this_reward) != null)
                 {
                     sender.sendMessage(CommandsOutput.Reward.errExistsReward());
@@ -373,25 +602,6 @@ public class VindexCommand extends CommandBase {
             }
             case "remove":
             {
-                node+="remove";
-                if (!checkPermission(sender, node)) return;
-                if(args.length>2)
-                {
-                    sender.sendMessage(CommandsOutput.Reward.rewardArgs(permissionLevel(sender)>=2));
-                    break;
-                }
-                try{
-                    k = Double.parseDouble(args[1]);
-                }
-                catch (NumberFormatException err)
-                {
-                    sender.sendMessage(CommandsOutput.Reward.errorQuantile(args[1]));
-                    break;
-                }
-                if(args[args.length-1].equals("-t"))
-                {
-                    this_reward = true;
-                }
                 if(Vindex.rewards.Find(k,this_reward) == null)
                 {
                     sender.sendMessage(CommandsOutput.Reward.errRewardNotFound());
@@ -399,7 +609,7 @@ public class VindexCommand extends CommandBase {
                 }
                 if(Vindex.rewards.Remove(k,this_reward))
                 {
-                    sender.sendMessage(CommandsOutput.Reward.successRewRemove());
+                    sender.sendMessage(CommandsOutput.Reward.successRewRemove(this_reward));
                 }
                 else
                 {
@@ -410,26 +620,6 @@ public class VindexCommand extends CommandBase {
             }
             case "set":
             {
-                node+="set";
-                if (!checkPermission(sender, node)) return;
-                if(!checkPlayer(sender)) return;
-                if(args.length>2)
-                {
-                    sender.sendMessage(CommandsOutput.Reward.rewardArgs(permissionLevel(sender)>=2));
-                    break;
-                }
-                try{
-                    k = Double.parseDouble(args[1]);
-                }
-                catch (NumberFormatException err)
-                {
-                    sender.sendMessage(CommandsOutput.Reward.errorQuantile(args[1]));
-                    break;
-                }
-                if(args[args.length-1].equals("-t"))
-                {
-                    this_reward = true;
-                }
                 if(Vindex.rewards.Find(k,this_reward) == null)
                 {
                     sender.sendMessage(CommandsOutput.Reward.errRewardNotFound());
@@ -447,23 +637,14 @@ public class VindexCommand extends CommandBase {
                 }
                 inv.LoadItems(temp);
                 ((EntityPlayer)sender).displayGUIChest(inv);
-
                 break;
             }
             case "list":
             {
+                this_reward = !args.containsKey("is_future");
                 Comparator<Map.Entry<Double, List<ItemStack>>> comparator = Map.Entry.comparingByKey();
-                Comparator<Map.Entry<Double, Double>> comparator_2 = Map.Entry.comparingByKey();
                 HashMap<Double, List<ItemStack>> costs_name = new HashMap<>();
                 HashMap<Double, Double> money = new HashMap<>();
-                if(!args[args.length-1].equals("-f"))
-                {
-                    this_reward = true;
-                }
-                else
-                {
-                    if(!checkPermission(sender,node+"list.future")) return;
-                }
                 for(Map.Entry<Double,Reward> temp : Vindex.rewards.getRewards(this_reward).entrySet())
                 {
                     List<ItemStack> items = new ArrayList<>();
@@ -493,12 +674,13 @@ public class VindexCommand extends CommandBase {
     }
 
     protected void worthCommand(ICommandSender sender){
-        node = MAIN_PERM+".worth";
-        if (!checkPermission(sender, node)) return;
-        if(!checkPlayer(sender)) return;
         ItemStack stack = getHeldItem(sender);
-        if (stack.isEmpty()) return;
-        Cost temp = Vindex.costs.Find(stack.serializeNBT());
+        if (stack.isEmpty())
+        {
+            sender.sendMessage(CommandsOutput.Cost.needItemInHand());
+            return;
+        }
+        Cost temp = Vindex.costs.Find(stack.serializeNBT(),true);
         sender.sendMessage(CommandsOutput.Worth.itemPrice(temp!=null ? temp.getXp() : 0));
 
     }
@@ -508,7 +690,7 @@ public class VindexCommand extends CommandBase {
         if(args.length==0)
         {
             sender.sendMessage(new TextComponentTranslation("command.vindex.vi.help"));
-            sender.sendMessage(CommandsOutput.Common.commandsList(commands[permissionLevel(sender)]));
+            sender.sendMessage(CommandsOutput.Common.commandsList(getAllowedCommands(sender)));
             return;
         }
         else if(args.length != 1)
@@ -521,17 +703,17 @@ public class VindexCommand extends CommandBase {
                 List<String> messages = new ArrayList<String>();
                 List<String> commands = new ArrayList<String>();
                 messages.add((new TextComponentTranslation("command.vindex.vi.cost.help")).getFormattedText());
-                if(checkPermission(sender,"vindex.command.cost.add",false))
+                if(CheckPermissions.checkPermission(sender,"vindex.command.cost.add",false))
                 {
                     commands.add("cost add <reward> [item] [-t]");
                     messages.add((new TextComponentTranslation("command.vindex.vi.cost.add.help")).getFormattedText());
                 }
-                if(checkPermission(sender,"vindex.command.cost.remove",false))
+                if(CheckPermissions.checkPermission(sender,"vindex.command.cost.remove",false))
                 {
                     commands.add("cost remove [item] [-t]");
                     messages.add((new TextComponentTranslation("command.vindex.vi.cost.remove.help")).getFormattedText());
                 }
-                if(checkPermission(sender,"vindex.command.cost.list",false))
+                if(CheckPermissions.checkPermission(sender,"vindex.command.cost.list",false))
                 {
                     commands.add("cost list [-f]");
                     messages.add((new TextComponentTranslation("command.vindex.vi.costs.help")).getFormattedText());
@@ -541,7 +723,7 @@ public class VindexCommand extends CommandBase {
                 break;
             }
             case("costs"): {
-                if(checkPermission(sender,"vindex.command.cost.list"))
+                if(CheckPermissions.checkPermission(sender,"vindex.command.cost.list"))
                 {
                     sender.sendMessage(CommandsOutput.Help.helpMessage(
                             (new TextComponentTranslation("command.vindex.vi.costs.help")).getFormattedText()));
@@ -552,17 +734,17 @@ public class VindexCommand extends CommandBase {
                 List<String> messages = new ArrayList<String>();
                 List<String> commands = new ArrayList<String>();
                 messages.add((new TextComponentTranslation("command.vindex.vi.reward.help")).getFormattedText());
-                if(checkPermission(sender,"vindex.command.reward.add",false))
+                if(CheckPermissions.checkPermission(sender,"vindex.command.reward.add",false))
                 {
                     commands.add("reward add <k> <money> [-t]");
                     messages.add((new TextComponentTranslation("command.vindex.vi.reward.add.help")).getFormattedText());
                 }
-                if(checkPermission(sender,"vindex.command.reward.remove",false))
+                if(CheckPermissions.checkPermission(sender,"vindex.command.reward.remove",false))
                 {
                     commands.add("reward remove <k> [-t]");
                     messages.add((new TextComponentTranslation("command.vindex.vi.reward.remove.help")).getFormattedText());
                 }
-                if(checkPermission(sender,"vindex.command.reward.set",false))
+                if(CheckPermissions.checkPermission(sender,"vindex.command.reward.set",false))
                 {
                     commands.add("reward set <k> [-t]");
                     messages.add((new TextComponentTranslation("command.vindex.vi.reward.set.help")).getFormattedText());
@@ -579,7 +761,7 @@ public class VindexCommand extends CommandBase {
                 break;
             }
             case("worth"): {
-                if(checkPermission(sender,"vindex.command.worth"))
+                if(CheckPermissions.checkPermission(sender,"vindex.command.worth"))
                 {
                     sender.sendMessage(CommandsOutput.Help.helpMessage(
                             (new TextComponentTranslation("command.vindex.vi.worth.help")).getFormattedText()));
@@ -594,17 +776,17 @@ public class VindexCommand extends CommandBase {
             }
             case("config"):
             {
-                if(checkPermission(sender,"vindex.command.config"))
+                if(CheckPermissions.checkPermission(sender,"vindex.command.config"))
                 {
                     List<String> messages = new ArrayList<String>();
                     List<String> commands = new ArrayList<String>();
                     messages.add((new TextComponentTranslation("command.vindex.vi.config.help")).getFormattedText());
-                    if(checkPermission(sender,"vindex.command.config.load",false))
+                    if(CheckPermissions.checkPermission(sender,"vindex.command.config.load",false))
                     {
                         commands.add("config load");
                         messages.add((new TextComponentTranslation("command.vindex.vi.config.load.help")).getFormattedText());
                     }
-                    if(checkPermission(sender,"vindex.command.config.save",false))
+                    if(CheckPermissions.checkPermission(sender,"vindex.command.config.save",false))
                     {
                         commands.add("config save");
                         messages.add((new TextComponentTranslation("command.vindex.vi.config.save.help")).getFormattedText());
@@ -621,7 +803,7 @@ public class VindexCommand extends CommandBase {
             }
             case ("stop"):
             {
-                if(checkPermission(sender,"vindex.seasons.stop"))
+                if(CheckPermissions.checkPermission(sender,"vindex.seasons.stop"))
                 {
                     sender.sendMessage(CommandsOutput.Help.helpMessage(
                             new TextComponentTranslation("command.vindex.vi.stop.help").getFormattedText()));
@@ -644,57 +826,5 @@ public class VindexCommand extends CommandBase {
     }
 
 
-    private boolean checkPermission(ICommandSender sender, String permission)
-    {
-        return checkPermission(sender,permission,true);
-    }
-    private boolean checkPlayer(ICommandSender sender)
-    {
-        if(sender instanceof EntityPlayer)
-        {
-            return true;
-        }
-        else
-        {
-            sender.sendMessage(CommandsOutput.Common.onlyPlayer());
-            return false;
-        }
-    }
 
-    private boolean checkPermission(ICommandSender sender, String permission, boolean is_output) {
-        if(!(sender instanceof EntityPlayer))
-        {
-            return true;
-        }
-        Entity entity = sender.getCommandSenderEntity();
-
-        if (entity instanceof EntityPlayer && PermissionAPI.hasPermission(((EntityPlayer) entity), permission)
-        || sender.getServer().getPlayerList().canSendCommands(((EntityPlayer) sender).getGameProfile())) return true;
-        if(is_output) {
-            sender.sendMessage(CommandsOutput.Common.accessDenied());
-        }
-        return false;
-    }
-
-    private int permissionLevel(ICommandSender sender)
-    {
-        if(!(sender instanceof EntityPlayer))
-        {
-            return 3;
-        }
-        Entity entity = sender.getCommandSenderEntity();
-        if(entity instanceof EntityPlayer)
-        {
-            if(checkPermission( entity,"vindex.command.config",false))
-                return 3;
-            else if(checkPermission( entity,"vindex.command.reward",false))
-                return 2;
-            else if(checkPermission(entity,"vindex.command.cost",false))
-                return 1;
-            else
-                return 0;
-        }
-        else return 3;
-
-    }
 }
