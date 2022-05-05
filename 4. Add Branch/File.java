@@ -1,8 +1,7 @@
 
-
-
 public class SeasonDaemon {
     private Long old_notify = null;
+    List<Map.Entry<Long, String>> notifications;
     private void broadcast(ITextComponent text) {
         FMLCommonHandler.instance().getMinecraftServerInstance().getPlayerList().sendMessage(text);
     }
@@ -23,6 +22,21 @@ public class SeasonDaemon {
                 Vindex.config.rewardPeriod.value,
                 Vindex.config.rewardPeriod.asTemporal());
     }
+    public void updateNotifications()
+    {
+        List<Map.Entry<Long, String>> all_notifications = Vindex.config.NOTIFICATIONS.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey()).collect(Collectors.toList());
+        Collections.reverse(all_notifications);
+        notifications = new ArrayList<>();
+        long last_time = getLastTime();
+        for(Map.Entry<Long, String> notify : all_notifications)
+        {
+            if(notify.getKey()<=last_time)
+            {
+                notifications.add(notify);
+            }
+        }
+    }
 
 
     public void tick() {
@@ -30,53 +44,14 @@ public class SeasonDaemon {
         Instant now = Instant.now();
         Instant next = getNextAward();
         long lastTime = getLastTime();
-        if (lastTime>=0) {
-            Long last_notify = null;
-            List<Map.Entry<Long, String>> notifications = Vindex.config.NOTIFICATIONS.entrySet().stream()
-                    .sorted(Map.Entry.comparingByKey()).collect(Collectors.toList());
-            Collections.reverse(notifications);
-            boolean check = false;
-            for (Map.Entry<Long, String> notify : notifications) {
-                if (last_notify == null) {
-                    last_notify = notify.getKey();
-                }
-
-                if (lastTime>notify.getKey()) {
-                    if (!last_notify.equals(notify.getKey())) {
-                        if (old_notify == null || !old_notify.equals(last_notify)) {
-                            if(lastTime-notify.getKey()<60) {
-                                String message = Vindex.config.NOTIFICATIONS.get(last_notify);
-                                old_notify = last_notify;
-                                broadcast(CommandsOutput.Season.seasonMessage(message));
-                            }
-                            else
-                            {
-                                old_notify = last_notify;
-                            }
-                        }
-                    }
-                    check=true;
-                    break;
-                }
-                else
-                {
-                    last_notify = notify.getKey();
-                }
-            }
-            if (!check) {
-                last_notify = ((Map.Entry<Long, String>) notifications.toArray()[notifications.size()-1]).getKey();
-                if (old_notify != null && !old_notify.equals(last_notify)) {
-                    String message = Vindex.config.NOTIFICATIONS.get(last_notify);
-                    old_notify = last_notify;
-                    broadcast(CommandsOutput.Season.seasonMessage(message));
-                }
+        if (lastTime>=0 && notifications.size()!=0) {
+            if (lastTime < notifications.get(0).getKey()) {
+                broadcast(CommandsOutput.Season.seasonMessage(notifications.get(0).getValue()));
+                notifications.remove(0);
             }
         }
         if (next.isAfter(now)) return;
-        old_notify = null;
         try {
-
-
             List<GVindexDatabase.PlayerStatistics> stats = Vindex.database.stats();
             stats.removeIf(x -> x.current < Vindex.config.minPoints);
             Vindex.scoreboard.clear();
@@ -94,8 +69,10 @@ public class SeasonDaemon {
                     double quantile = (i + 1) * 1. / stats.size();
 
                     Reward best = getBestReward(quantile);
+
                     EntityPlayerMP p = Vindex.instance.server.getPlayerList().getPlayerByUUID(UUID.fromString(cur.UUID));
                     if (p != null) {
+
                         if(best == Reward.NO)
                         {
                             p.sendMessage(CommandsOutput.Season.winnerSeason(i+1,true));
@@ -130,6 +107,7 @@ public class SeasonDaemon {
             Vindex.rewards.SwapReward();
         } finally {
             Vindex.database.previousAward = now;
+            updateNotifications();
         }
     }
 
